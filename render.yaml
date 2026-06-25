@@ -1,0 +1,9 @@
+services:
+  - type: web
+    name: kda-chatbot
+    runtime: docker
+    plan: free
+    autoDeploy: true
+    envVars:
+      - key: OPENAI_MODEL
+        value: gpt-4o-mini

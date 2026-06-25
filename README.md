@@ -76,6 +76,20 @@ If no API key is present, the app falls back to deterministic tool-based respons
 streamlit run app.py
 ```
 
+## Deploy to Render with Docker
+
+This repository includes `Dockerfile` and `render.yaml` for Render Web Service deployment.
+
+1. Push the repository to GitHub.
+2. In Render, create a new Blueprint or Web Service from the GitHub repository.
+3. Select the `main` branch.
+4. Use Docker runtime. The container starts Streamlit on Render's `$PORT`.
+5. Add secrets in Render Environment Variables:
+   - `OPENAI_API_KEY` for OpenAI-backed interpretation
+   - or `GOOGLE_API_KEY` if Gemini support is enabled
+
+If no API key is configured, the app still runs with deterministic fallback answers.
+
 ## Test
 
 ```powershell
