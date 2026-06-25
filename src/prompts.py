@@ -13,6 +13,8 @@ from __future__ import annotations
 
 import json
 import os
+import re
+import time
 
 from . import config
 
@@ -346,6 +348,22 @@ def _get_llm():
     return None
 
 
+def _llm_messages(
+    package: dict,
+    follow_up: str | None = None,
+    history: list[dict] | None = None,
+) -> list:
+    """system/human 메시지 쌍을 만든다. invoke 와 stream 이 공유한다."""
+    from langchain_core.messages import HumanMessage, SystemMessage
+
+    return [
+        SystemMessage(content=SYSTEM_PROMPT_KO),
+        HumanMessage(
+            content=build_user_prompt(package, follow_up=follow_up, history=history)
+        ),
+    ]
+
+
 def generate_answer(
     package: dict,
     follow_up: str | None = None,
@@ -358,20 +376,7 @@ def generate_answer(
     llm = _get_llm()
     if llm is not None:
         try:
-            from langchain_core.messages import HumanMessage, SystemMessage
-
-            response = llm.invoke(
-                [
-                    SystemMessage(content=SYSTEM_PROMPT_KO),
-                    HumanMessage(
-                        content=build_user_prompt(
-                            package,
-                            follow_up=follow_up,
-                            history=history,
-                        )
-                    ),
-                ]
-            )
+            response = llm.invoke(_llm_messages(package, follow_up, history))
             text = getattr(response, "content", None) or str(response)
             return {"text": text.strip(), "mode": "llm"}
         except Exception:
@@ -381,6 +386,73 @@ def generate_answer(
         "text": fallback_answer(package, follow_up=follow_up, history=history),
         "mode": "fallback",
     }
+
+
+def iter_typewriter(text: str, *, delay: float | None = None):
+    """문자열을 어절 단위로 끊어 타이핑하듯 흘려보내는 제너레이터.
+
+    LLM 키가 없을 때의 fallback 답변과 정형(canned) 안내문에도 '주르륵' 효과를
+    주기 위한 헬퍼다. 조각을 모두 합치면 원문과 완전히 동일하다.
+
+    지연 시간은 ``SAJU_STREAM_DELAY`` 환경 변수로 조절한다(테스트는 0 으로 둔다).
+    """
+    if delay is None:
+        try:
+            delay = float(os.environ.get("SAJU_STREAM_DELAY", "0.02"))
+        except (TypeError, ValueError):
+            delay = 0.02
+    text = str(text or "")
+    if not text:
+        return
+    # 공백 묶음과 비공백(어절) 묶음을 번갈아 내보낸다. 마크다운 구조와 줄바꿈은 보존된다.
+    for token in re.findall(r"\s+|\S+", text):
+        yield token
+        if delay > 0:
+            time.sleep(delay)
+
+
+def _stream_llm_chunks(
+    llm,
+    package: dict,
+    follow_up: str | None,
+    history: list[dict] | None,
+):
+    """LLM 토큰을 흘려보내고, 한 조각이라도 보냈으면 True 를 반환한다."""
+    produced = False
+    try:
+        for chunk in llm.stream(_llm_messages(package, follow_up, history)):
+            piece = getattr(chunk, "content", "") or ""
+            if piece:
+                produced = True
+                yield piece
+    except Exception:
+        # 스트리밍 도중 오류: 이미 일부를 보냈으면 그대로 끝내고,
+        # 아무것도 못 보냈으면 호출부가 fallback 으로 내려가게 한다. (NFR-1)
+        pass
+    return produced
+
+
+def stream_answer(
+    package: dict,
+    follow_up: str | None = None,
+    history: list[dict] | None = None,
+):
+    """답변을 조각 단위로 흘려보내는 제너레이터.
+
+    - LLM 키가 있으면 실제 토큰 스트리밍을 시도한다.
+    - 키가 없거나 스트리밍이 아무 내용도 만들지 못하면, 결정적 fallback
+      답변을 타이핑하듯 끊어서 내보낸다. (NFR-1)
+
+    조각을 모두 합치면 한 번에 생성한 답변과 동일한 전체 텍스트가 된다.
+    """
+    llm = _get_llm()
+    if llm is not None:
+        produced = yield from _stream_llm_chunks(llm, package, follow_up, history)
+        if produced:
+            return
+    yield from iter_typewriter(
+        fallback_answer(package, follow_up=follow_up, history=history)
+    )
 
 
 def _normalized_text(value: str | None) -> str:
