@@ -58,8 +58,12 @@ EARTHLY_BRANCH_ELEMENTS = {
     "자": "water",
 }
 
-REQUIRED_PILLARS = ("year_pillar", "month_pillar", "day_pillar")
-OPTIONAL_PILLARS = ("hour_pillar",)
+PILLARS = (
+    ("year_pillar", True),
+    ("month_pillar", True),
+    ("day_pillar", True),
+    ("hour_pillar", False),
+)
 
 
 def _json_ok(data: dict[str, Any]) -> str:
@@ -102,7 +106,10 @@ def _load_payload(raw_json: str) -> tuple[dict[str, Any] | None, str | None]:
             return None, _json_error("INVALID_SAJU_CHART", "data 객체가 누락되었습니다.")
         return data, None
 
-    return payload, None
+    if "ok" not in payload:
+        return payload, None
+
+    return None, _json_error("INVALID_SAJU_CHART", "ok value must be true or false.")
 
 
 def _normalize_pillar(
@@ -166,16 +173,8 @@ def analyze_five_elements(saju_chart_json: str) -> str:
 
     counts = {element: 0 for element in ELEMENT_ORDER}
 
-    for key in REQUIRED_PILLARS:
-        pillar, error = _normalize_pillar(data, key, required=True)
-        if error:
-            return error
-        stem, branch = pillar[0], pillar[1]
-        counts[HEAVENLY_STEM_ELEMENTS[stem]] += 1
-        counts[EARTHLY_BRANCH_ELEMENTS[branch]] += 1
-
-    for key in OPTIONAL_PILLARS:
-        pillar, error = _normalize_pillar(data, key, required=False)
+    for key, required in PILLARS:
+        pillar, error = _normalize_pillar(data, key, required=required)
         if error:
             return error
         if pillar is None:

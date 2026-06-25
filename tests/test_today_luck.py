@@ -74,6 +74,16 @@ def test_recommended_element_match_adds_bonus():
     assert result["data"]["score"] >= BASE_SCORE + RECOMMENDED_MATCH_BONUS
 
 
+def test_recommended_equals_weak_no_double_bonus():
+    profile = _profile(recommended="metal", weak="metal", strong="wood")
+
+    result = calculate_today_luck_payload(profile, target_date=date(2026, 6, 24))
+
+    assert result["ok"] is True
+    assert result["data"]["today_element"] == "metal"
+    assert result["data"]["score"] == 83
+
+
 def test_strong_element_match_applies_penalty():
     # 2026-06-21 maps to wood with the MVP date rule.
     result = calculate_today_luck_payload(
@@ -84,6 +94,38 @@ def test_strong_element_match_applies_penalty():
     assert result["ok"] is True
     assert result["data"]["today_element"] == "wood"
     assert result["data"]["score"] == BASE_SCORE - STRONG_MATCH_PENALTY
+
+
+def test_non_string_date_returns_invalid_date():
+    payload = json.loads(_profile())
+    payload["date"] = 20260624
+
+    result = calculate_today_luck_payload(json.dumps(payload, ensure_ascii=False))
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "INVALID_DATE"
+
+
+def test_profile_data_date_is_used_for_score_date():
+    payload = json.loads(_profile(recommended="metal", weak="metal", strong="wood"))
+    payload["data"]["date"] = "2026-06-24"
+
+    result = calculate_today_luck_payload(json.dumps(payload, ensure_ascii=False))
+
+    assert result["ok"] is True
+    assert result["data"]["date"] == "2026-06-24"
+    assert result["data"]["today_element"] == "metal"
+    assert result["data"]["score"] == 83
+
+
+def test_element_values_are_normalized_before_validation():
+    profile = _profile(recommended="Metal", weak=" water ", strong="WOOD")
+
+    result = calculate_today_luck_payload(profile, target_date=date(2026, 6, 24))
+
+    assert result["ok"] is True
+    assert result["data"]["recommended_element"] == "metal"
+    assert result["data"]["today_element"] == "metal"
 
 
 def test_invalid_json_returns_error_json():

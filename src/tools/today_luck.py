@@ -14,8 +14,12 @@ from typing import Any
 try:
     from langchain.tools import tool
 except ImportError:  # pragma: no cover - keeps tests runnable before deps install.
-    def tool(func):
-        return func
+    try:
+        from langchain_core.tools import tool
+    except ImportError:  # pragma: no cover
+        def tool(func):
+            func.invoke = lambda tool_input: func(tool_input)
+            return func
 
 
 ELEMENTS = ("wood", "fire", "earth", "metal", "water")
@@ -51,22 +55,36 @@ def _clamp_score(score: int) -> int:
 
 
 def _today_element_for_date(target_date: date) -> str:
-    """Return a deterministic MVP element for a given date.
+    """Return a deterministic per-date MVP element.
 
     The offset keeps the architecture document's example date, 2026-06-24,
-    aligned with ``metal`` while still producing stable day-by-day results.
+    aligned with ``metal``. This guarantees the same result for the same date,
+    but does not guarantee smooth or evenly distributed day-by-day cycling.
     """
     numeric_date = int(target_date.strftime("%Y%m%d"))
     return ELEMENTS[(numeric_date + 4) % len(ELEMENTS)]
 
 
-def _parse_date(value: str | None) -> date:
+def _parse_date(value: Any) -> date:
     if not value:
         return date.today()
+    if not isinstance(value, str):
+        raise ValueError("date must be a YYYY-MM-DD string.")
     try:
         return date.fromisoformat(value)
     except ValueError as exc:
         raise ValueError("date는 YYYY-MM-DD 형식이어야 합니다.") from exc
+
+
+def _extract_date_value(payload: dict[str, Any]) -> Any:
+    if payload.get("date") not in (None, ""):
+        return payload.get("date")
+
+    data = payload.get("data")
+    if isinstance(data, dict):
+        return data.get("date")
+
+    return None
 
 
 def _extract_five_elements(payload: dict[str, Any]) -> dict[str, Any] | None:
@@ -85,14 +103,20 @@ def _extract_five_elements(payload: dict[str, Any]) -> dict[str, Any] | None:
 
 
 def _validate_element(value: Any, field_name: str, required: bool = True) -> tuple[str | None, str | None]:
-    if value in (None, ""):
+    if value is None:
         if required:
             return None, f"five_elements.{field_name}가 필요합니다."
         return None, None
-    if value not in ELEMENTS:
+    normalized = str(value).strip().lower()
+    if normalized == "":
+        if required:
+            return _validate_element(None, field_name, required=True)
+        return None, None
+
+    if normalized not in ELEMENTS:
         allowed = ", ".join(ELEMENTS)
         return None, f"five_elements.{field_name}는 {allowed} 중 하나여야 합니다."
-    return str(value), None
+    return normalized, None
 
 
 def _build_signals(
@@ -152,7 +176,7 @@ def calculate_today_luck_payload(profile_json: str, target_date: date | None = N
         return {"ok": False, "error": {"code": "INVALID_PROFILE", "message": "프로필 JSON은 객체여야 합니다."}}
 
     try:
-        score_date = _parse_date(payload.get("date")) if target_date is None else target_date
+        score_date = _parse_date(_extract_date_value(payload)) if target_date is None else target_date
     except ValueError as exc:
         return {"ok": False, "error": {"code": "INVALID_DATE", "message": str(exc)}}
 
@@ -196,12 +220,14 @@ def calculate_today_luck_payload(profile_json: str, target_date: date | None = N
 
     if today_element == recommended_element:
         score += RECOMMENDED_MATCH_BONUS
-    if weak_element and today_element == weak_element:
+    elif weak_element and today_element == weak_element:
         score += WEAK_MATCH_BONUS
-    if strong_element and today_element != strong_element:
-        score += BALANCE_BONUS
+
     if strong_element and today_element == strong_element:
         score -= STRONG_MATCH_PENALTY
+    elif strong_element:
+        score += BALANCE_BONUS
+
     if limited:
         score -= LIMITED_INTERPRETATION_PENALTY
 

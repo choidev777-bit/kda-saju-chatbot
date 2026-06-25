@@ -112,8 +112,8 @@ def recommend_lucky_factors(element_analysis_json: str) -> str:
     if not isinstance(payload, dict):
         return _error_response("입력 JSON은 객체 형식이어야 합니다.")
 
-    if payload.get("ok") is False:
-        return _error_response("오행 분석 결과가 성공 상태가 아닙니다.")
+    if payload.get("ok") is not True:
+        return _error_response("오행 분석 결과가 성공 상태(ok:true)가 아닙니다.")
 
     recommended_element = _extract_recommended_element(payload)
     if recommended_element is None:

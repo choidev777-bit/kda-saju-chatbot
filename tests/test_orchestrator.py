@@ -231,3 +231,42 @@ def test_bad_return_type_is_handled():
     assert result["ok"] is True
     assert config.TOOL_LUCKY_FACTORS in result["data"]["pending_tools"]
     assert "lucky_factors" not in result["data"]["tool_results"]
+
+
+# --- conversation entry point -------------------------------------------
+def test_handle_message_routes_natural_language_with_existing_profile():
+    orch = Orchestrator(registry=full_registry())
+    profile = orch.build_profile(USER_JSON)
+    result = orch.handle_message("오늘 운세 봐줘", {"profile": profile})
+    assert result["ok"] is True
+    assert result["data"]["reply_kind"] == "answer"
+    assert result["data"]["intent"] == "today_fortune"
+    assert config.TOOL_TODAY_LUCK in result["data"]["tools_run"]
+
+
+def test_handle_message_follow_up_uses_previous_result_without_rerunning_tool():
+    registry = full_registry()
+    registry[config.TOOL_TODAY_LUCK] = _raising_tool
+    orch = Orchestrator(registry=registry)
+    profile = Orchestrator(registry=full_registry()).build_profile(USER_JSON)
+    state = {
+        "profile": profile,
+        "last_intent": "today_fortune",
+        "last_tool_results": {"today_luck": {"score": 82}},
+    }
+    result = orch.handle_message("왜 그렇게 나와?", state)
+    assert result["ok"] is True
+    assert result["data"]["reply_kind"] == "follow_up"
+    assert result["data"]["llm_package"]["tool_result"]["today_luck"]["score"] == 82
+    assert result["data"]["tools_run"] == []
+
+
+def test_handle_message_tool_exception_becomes_pending_tool():
+    registry = full_registry()
+    registry[config.TOOL_LUCKY_FACTORS] = _raising_tool
+    orch = Orchestrator(registry=registry)
+    profile = orch.build_profile(USER_JSON)
+    result = orch.handle_message("행운 색깔 알려줘", {"profile": profile})
+    assert result["ok"] is True
+    assert result["data"]["reply_kind"] == "answer"
+    assert config.TOOL_LUCKY_FACTORS in result["data"]["pending_tools"]

@@ -98,6 +98,33 @@ def test_invalid_json_returns_error_json():
     assert result["error"]["code"] == "INVALID_ELEMENT_ANALYSIS"
 
 
+def test_string_false_ok_returns_error_json():
+    result = _call_recommend_lucky_factors(
+        json.dumps({"ok": "false", "data": {"recommended_element": "metal"}})
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "INVALID_ELEMENT_ANALYSIS"
+
+
+def test_missing_ok_returns_error_json():
+    result = _call_recommend_lucky_factors(
+        json.dumps({"data": {"recommended_element": "metal"}})
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "INVALID_ELEMENT_ANALYSIS"
+
+
+def test_integer_ok_returns_error_json():
+    result = _call_recommend_lucky_factors(
+        json.dumps({"ok": 1, "data": {"recommended_element": "metal"}})
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "INVALID_ELEMENT_ANALYSIS"
+
+
 def test_missing_recommended_element_returns_error_json():
     result = _call_recommend_lucky_factors(
         json.dumps({"ok": True, "data": {}}, ensure_ascii=False)

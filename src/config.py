@@ -105,9 +105,15 @@ MENU_LABELS_KO = {
     "life_flow": "인생흐름",
 }
 
+# Conversation routing keeps the menu contract but exposes neutral names for chat.
+INTENT_REQUIRED_TOOLS = MENU_REQUIRED_TOOLS
+INTENT_LABELS_KO = MENU_LABELS_KO
+PROFILE_REQUIRED_SLOTS = ("name", "birth_date", "calendar_type")
+PROFILE_OPTIONAL_SLOTS = ("gender", "birth_time", "birth_time_unknown", "is_leap_month")
+
 # --- 안전 정책 -----------------------------------------------------------
 # 제외(금지) 주제 — 의료/투자/단정 예측 등
-EXCLUDED_TOPICS_KO = ["건강운", "질병", "수명", "사고", "투자 수익", "합격", "당첨"]
+EXCLUDED_TOPICS_KO = ["건강운", "질병", "수명", "사고", "투자 수익", "합격", "당첨", "복권"]
 
 ANSWER_POLICY = {
     "purpose": "entertainment_and_self_reflection",
@@ -116,5 +122,10 @@ ANSWER_POLICY = {
 
 DISCLAIMER_KO = (
     "본 서비스는 전통 명리학 요소를 활용한 엔터테인먼트 및 자기성찰용 챗봇입니다. "
+    "의학, 법률, 금융 등 중요한 의사결정의 근거로 사용하지 마세요."
+)
+ 
+DISCLAIMER_KO = (
+    "이 서비스는 전통 명리 요소를 활용한 엔터테인먼트 및 자기성찰용 챗봇입니다. "
     "의학, 법률, 금융 등 중요한 의사결정의 근거로 사용하지 마세요."
 )

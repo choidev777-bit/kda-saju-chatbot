@@ -121,6 +121,23 @@ def test_raw_chart_data_is_supported_for_local_integration():
     assert result["data"]["counts"]["wood"] == 3
 
 
+def test_non_bool_ok_is_rejected_instead_of_treated_as_raw_chart():
+    result = run_tool(
+        {
+            "ok": 1,
+            "data": {
+                "year_pillar": "臾댁씤",
+                "month_pillar": "?꾨쵖",
+                "day_pillar": "蹂묒쭊",
+                "hour_pillar": None,
+            },
+        }
+    )
+
+    assert result["ok"] is False
+    assert result["error"]["code"] == "INVALID_SAJU_CHART"
+
+
 def test_invalid_json_returns_error_json():
     result = run_tool("{not-json")
 
