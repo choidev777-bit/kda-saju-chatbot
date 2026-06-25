@@ -18,6 +18,16 @@ import importlib
 import json
 
 from . import config, prompts
+from .chat_intent import (
+    ConversationState,
+    append_message,
+    extract_slots_from_message,
+    merge_slots,
+    missing_slots,
+    route_intent,
+    slots_to_user_info,
+)
+from .tools.myeongri import analyze_myeongri_impl, calculate_iljin_impl
 from .tools.saju_chart import calculate_saju_chart_impl
 
 # 팀원 도구의 (모듈 경로, 함수 이름) 명세
@@ -87,7 +97,7 @@ def _safe_call(func, json_str: str) -> dict:
 
 
 class Orchestrator:
-    """메뉴 흐름을 조율한다. 레지스트리를 주입하면 테스트가 쉬워진다."""
+    """메뉴 흐름과 채팅 턴을 조율한다."""
 
     def __init__(self, registry: dict | None = None) -> None:
         self.registry = registry if registry is not None else default_registry()
@@ -134,11 +144,20 @@ class Orchestrator:
         else:
             pending.append(config.TOOL_FIVE_ELEMENTS)
 
+        # 명리 해석(정적): 통합 리드의 코어 도구라 레지스트리 없이 직접 계산한다.
+        # 외부 의존이 없으므로 pending 으로 두지 않는다(실패해도 None 으로 graceful).
+        myeongri_input = config.to_json(
+            config.success({"user": user, "saju_chart": saju_data})
+        )
+        myeongri_res = _safe_call(analyze_myeongri_impl, myeongri_input)
+        myeongri_data = myeongri_res["data"] if myeongri_res.get("ok") else None
+
         return config.success(
             {
                 "user": user,
                 "saju_chart": saju_data,
                 "five_elements": five_elements_data,
+                "myeongri": myeongri_data,
                 "pending_tools": pending,
             }
         )
@@ -158,7 +177,21 @@ class Orchestrator:
             )
 
         pdata = profile["data"]
-        five_elements_data = pdata.get("five_elements")
+        run_data = self._run_intent_tools(intent, pdata)
+        package = prompts.build_llm_package(intent, pdata, run_data["tool_results"])
+        return config.success(
+            {
+                "intent": intent,
+                "tool_results": run_data["tool_results"],
+                "llm_package": package,
+                "tools_run": run_data["tools_run"],
+                "pending_tools": run_data["pending_tools"],
+                "follow_up": follow_up,
+            }
+        )
+
+    def _run_intent_tools(self, intent: str, profile_data: dict) -> dict:
+        five_elements_data = profile_data.get("five_elements")
         required = config.MENU_REQUIRED_TOOLS[intent]
 
         tool_results: dict = {}
@@ -172,11 +205,29 @@ class Orchestrator:
             else:
                 pending.append(config.TOOL_FIVE_ELEMENTS)
 
+        # 명리 해석도 프로필 생성 단계에서 계산되었다(정적). tools_run 에는 넣지 않는다.
+        if config.TOOL_MYEONGRI in required:
+            myeongri_data = profile_data.get("myeongri")
+            if myeongri_data is not None:
+                tool_results["myeongri"] = myeongri_data
+            else:
+                pending.append(config.TOOL_MYEONGRI)
+
+        # 일진(오늘): 출생 일주 기준으로 직접 계산한다(core). 날짜 의존이라 메뉴 단계에서 계산.
+        if config.TOOL_ILJIN in required:
+            res = _safe_call(
+                calculate_iljin_impl, config.to_json(config.success(profile_data))
+            )
+            if res.get("ok"):
+                tool_results["iljin"] = res["data"]
+            else:
+                pending.append(config.TOOL_ILJIN)
+
         # 오늘 운세 점수 (입력: 조립된 profile)
         if config.TOOL_TODAY_LUCK in required:
             fn = self.registry.get(config.TOOL_TODAY_LUCK)
             if fn is not None and five_elements_data is not None:
-                res = _safe_call(fn, config.to_json(config.success(pdata)))
+                res = _safe_call(fn, config.to_json(config.success(profile_data)))
                 tools_run.append(config.TOOL_TODAY_LUCK)
                 if res.get("ok"):
                     tool_results["today_luck"] = res["data"]
@@ -198,14 +249,141 @@ class Orchestrator:
             else:
                 pending.append(config.TOOL_LUCKY_FACTORS)
 
-        package = prompts.build_llm_package(intent, pdata, tool_results)
-        return config.success(
-            {
-                "intent": intent,
-                "tool_results": tool_results,
-                "llm_package": package,
-                "tools_run": tools_run,
-                "pending_tools": pending,
-                "follow_up": follow_up,
-            }
+        return {
+            "tool_results": tool_results,
+            "tools_run": tools_run,
+            "pending_tools": pending,
+        }
+
+    def handle_message(
+        self, message: str, state: ConversationState | dict | None = None
+    ) -> dict:
+        """Handle one natural-language chat turn on top of ``answer()``."""
+        conv = ConversationState.from_dict(state)
+        append_message(conv, "user", message)
+
+        slots = extract_slots_from_message(message)
+        if slots:
+            conv.user_slots = merge_slots(conv.user_slots, slots)
+
+        routed = route_intent(message, conv)
+        if routed.kind == "blocked":
+            if conv.profile is None:
+                conv.pending_slots = missing_slots(conv.user_slots)
+            return self._conversation_success(
+                conv,
+                reply_kind="blocked",
+                pending_slots=conv.pending_slots,
+                blocked_topic=routed.blocked_topic,
+            )
+
+        if conv.profile is None:
+            pending_slots = missing_slots(conv.user_slots)
+            conv.pending_slots = pending_slots
+            if pending_slots:
+                return self._conversation_success(
+                    conv,
+                    reply_kind="need_profile",
+                    pending_slots=pending_slots,
+                )
+
+            profile = self.build_profile(
+                config.to_json(slots_to_user_info(conv.user_slots))
+            )
+            conv.profile = profile
+            conv.pending_tools = list((profile.get("data") or {}).get("pending_tools") or [])
+            if not profile.get("ok"):
+                return self._conversation_success(
+                    conv,
+                    reply_kind="profile_error",
+                    pending_tools=conv.pending_tools,
+                )
+
+            if routed.kind not in ("intent", "follow_up"):
+                return self._conversation_success(
+                    conv,
+                    reply_kind="profile_ready",
+                    pending_tools=conv.pending_tools,
+                )
+
+        if routed.kind == "clarify" or routed.intent is None:
+            return self._conversation_success(conv, reply_kind="clarify")
+
+        if routed.kind == "follow_up" and conv.last_tool_results:
+            package = prompts.build_llm_package(
+                routed.intent,
+                (conv.profile or {}).get("data") or {},
+                conv.last_tool_results,
+                user_message=message,
+                conversation_history=conv.message_history,
+                last_intent=routed.intent,
+            )
+            conv.last_intent = routed.intent
+            return self._conversation_success(
+                conv,
+                reply_kind="follow_up",
+                llm_package=package,
+                intent=routed.intent,
+                tool_results=conv.last_tool_results,
+                tools_run=[],
+                pending_tools=conv.pending_tools,
+                follow_up=routed.follow_up,
+            )
+
+        answered = self.answer(routed.intent, conv.profile, follow_up=routed.follow_up)
+        if not answered.get("ok"):
+            return answered
+
+        data = answered["data"]
+        conv.last_intent = routed.intent
+        conv.last_tool_results = data.get("tool_results") or {}
+        conv.pending_tools = list(data.get("pending_tools") or [])
+        package = self._package_with_context(
+            data.get("llm_package"),
+            message=message,
+            history=conv.message_history,
+            last_intent=routed.intent,
         )
+        return self._conversation_success(
+            conv,
+            reply_kind="follow_up" if routed.kind == "follow_up" else "answer",
+            llm_package=package,
+            intent=data.get("intent"),
+            tool_results=data.get("tool_results") or {},
+            tools_run=list(data.get("tools_run") or []),
+            pending_tools=conv.pending_tools,
+            follow_up=routed.follow_up,
+        )
+
+    @staticmethod
+    def _conversation_success(state: ConversationState, **data) -> dict:
+        payload = {
+            "state": state.to_dict(),
+            "llm_package": data.pop("llm_package", None),
+            "reply_kind": data.pop("reply_kind", "answer"),
+            "intent": data.pop("intent", None),
+            "tool_results": data.pop("tool_results", {}),
+            "tools_run": data.pop("tools_run", []),
+            "pending_slots": list(data.pop("pending_slots", state.pending_slots)),
+            "pending_tools": list(data.pop("pending_tools", state.pending_tools)),
+            "follow_up": data.pop("follow_up", None),
+            "blocked_topic": data.pop("blocked_topic", None),
+        }
+        payload.update(data)
+        return config.success(payload)
+
+    @staticmethod
+    def _package_with_context(
+        package: dict | None,
+        *,
+        message: str,
+        history: list[dict[str, str]],
+        last_intent: str | None,
+    ) -> dict | None:
+        if not isinstance(package, dict):
+            return package
+        enriched = dict(package)
+        enriched["user_message"] = message
+        enriched["conversation_history"] = list(history)
+        enriched["last_intent"] = last_intent
+        return enriched
