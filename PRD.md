@@ -1,6 +1,6 @@
 # 사주 기반 자기성찰 챗봇 PRD
 
-Last Updated: 2026-06-24
+Last Updated: 2026-06-25
 
 ## 1. 문서 개요
 
@@ -16,7 +16,7 @@ Last Updated: 2026-06-24
 
 ## 2. 제품 한 줄 설명
 
-사용자의 생년월일과 출생시간을 바탕으로 사주 원자료와 오행을 계산하고, 계산된 결과를 LLM이 해석하여 사주풀이, 오늘의 운세, 행운 점수, 행운 색깔, 행운 아이템, 연애운, 재물운, 인생흐름을 제공하는 챗봇이다.
+사용자의 생년월일과 출생시간을 바탕으로 사주팔자·오행과 십신·신살·대운 등 명리 요소를 계산하고, 계산된 결과를 LLM이 메뉴별 출력 양식과 상담가 페르소나(날카로운 분석 '팩폭' + 구체적 개운법)로 해석하여 사주풀이, 오늘의 운세, 행운 점수, 행운 색깔, 행운 아이템, 연애운, 재물운, 인생흐름을 제공하는 챗봇이다.
 
 ## 3. 문제 정의
 
@@ -40,9 +40,10 @@ Last Updated: 2026-06-24
 ### 4.2 프로젝트 목표
 
 - Streamlit 또는 Gradio 기반 챗봇 형태로 구현한다.
-- LangChain `@tool` 기반 tool을 4개 이상 구현한다.
+- LangChain `@tool` 기반 tool을 4개 이상 구현한다. (현재 6개 구현)
 - 팀원 4명이 각각 최소 1개 이상의 tool을 담당한다.
-- LLM 환각을 줄이기 위해 계산은 tool이 수행하고, LLM은 해석만 담당한다.
+- LLM 환각을 줄이기 위해 계산(만세력·오행·십신·신살·대운 등)은 tool이 수행하고, LLM은 해석만 담당한다.
+- 메뉴별 출력 양식과 상담가 페르소나를 LLM 프롬프트에 적용한다.
 - PRD, GitHub URL, 기술 스택 목록을 제출 가능한 형태로 준비한다.
 
 ## 5. 비목표
@@ -53,7 +54,7 @@ Last Updated: 2026-06-24
 - 질병, 수명, 사고 예측
 - 투자 수익, 주식, 당첨, 합격 여부 예측
 - 의학, 법률, 금융 의사결정 조언
-- 정통 대운 기반의 고정밀 인생흐름 분석
+- 유파별 정통 기준의 고정밀 대운/용신 보장 (대운·신강신약·용신은 근사값으로 제공)
 - 상용 수준의 만세력 정확도 보장
 - 로그인, 회원가입, 결제 기능
 
@@ -229,11 +230,39 @@ def recommend_lucky_factors(element_analysis_json: str) -> str:
 - [ ] 추천 이유를 함께 반환한다.
 - [ ] 알 수 없는 오행 입력 시 구조화된 에러 JSON을 반환한다.
 
-### FR-6. LLM 해석
+### FR-6. 명리 해석 tool
+
+담당자: 최연준 (통합 리드)
 
 설명:
 
-LLM은 tool이 생성한 JSON 결과를 바탕으로 사용자에게 자연어 답변을 제공한다.
+사주팔자(간지)를 바탕으로 십신, 지장간, 신강/신약, 용신, 신살, 대운, 일진을 계산한다. 만세력 라이브러리는 간지·절기 등 1차 재료만 제공하므로, 해석 데이터는 표준 명리 규칙(룩업 테이블)으로 직접 계산한다.
+
+Tool:
+
+```python
+@tool
+def analyze_myeongri(saju_chart_json: str) -> str:
+    """사주팔자로부터 십신·지장간·신강신약·용신·신살을 계산한다."""
+
+@tool
+def calculate_iljin(profile_json: str) -> str:
+    """출생 일주를 기준으로 오늘(또는 대상 날짜)의 일진 간지를 계산한다."""
+```
+
+수용 기준:
+
+- [ ] 십신(천간/지지)과 지장간을 결정적으로 계산한다.
+- [ ] 신강/신약과 용신은 근사값임을 결과에 명시한다.
+- [ ] 신살(천을귀인·양인·문창·도화·역마·화개·괴강·백호)을 룩업으로 판정한다.
+- [ ] 대운은 방향(년간 음양×성별)·대운수·간지 목록을 제공하고, 성별/출생일이 없으면 graceful 처리한다.
+- [ ] 일진은 출생 일주 기준 60갑자 순환으로 전 출생연도(1900~2050)를 지원한다.
+
+### FR-7. LLM 해석
+
+설명:
+
+LLM은 tool이 생성한 JSON 결과를 바탕으로, 메뉴별 출력 양식과 상담가 페르소나(팩폭·시적 소제목)에 맞춰 자연어 답변을 제공한다.
 
 수용 기준:
 
@@ -242,8 +271,9 @@ LLM은 tool이 생성한 JSON 결과를 바탕으로 사용자에게 자연어 �
 - [ ] JSON에 없는 정보는 추측하지 않는다.
 - [ ] 답변은 엔터테인먼트 및 자기성찰용 조언으로 제한한다.
 - [ ] 건강, 질병, 수명, 사고, 투자 수익을 단정하지 않는다.
+- [ ] 메뉴별 지정 출력 양식과 상담가 페르소나를 따른다.
 
-### FR-7. 메뉴별 답변
+### FR-8. 메뉴별 답변
 
 설명:
 
@@ -265,6 +295,7 @@ LLM은 tool이 생성한 JSON 결과를 바탕으로 사용자에게 자연어 �
 - [ ] 사용자는 각 메뉴를 선택할 수 있다.
 - [ ] 메뉴별로 필요한 tool만 실행된다.
 - [ ] 결과는 한국어 자연어 답변으로 제공된다.
+- [ ] 메뉴별로 문서에 정의된 출력 양식(만세력 표·시적 소제목·개운법 등)을 따른다.
 - [ ] 건강운 요청 시 제외 안내를 제공한다.
 
 ## 9. 비기능 요구사항
@@ -338,6 +369,41 @@ LLM은 tool이 생성한 JSON 결과를 바탕으로 사용자에게 자연어 �
     "strong_element": "wood",
     "weak_element": "metal",
     "recommended_element": "metal"
+  },
+  "myeongri": {
+    "il_gan": "병",
+    "sipsin": {
+      "year": { "stem": "식신", "branch": "편인" },
+      "month": { "stem": "정인", "branch": "정인" },
+      "day": { "stem": "일간", "branch": "식신" },
+      "hour": { "stem": "겁재", "branch": "비견" }
+    },
+    "body_strength": { "label": "신강", "score": 6, "method": "weighted_approx" },
+    "yongsin": { "favorable_elements": ["earth", "metal", "water"], "method": "eokbu_approx" },
+    "sinsal": [
+      { "name": "도화", "branch": "묘", "positions": ["month"] }
+    ],
+    "daewoon": {
+      "available": true,
+      "direction": "순행",
+      "start_age": 8,
+      "periods": [
+        { "sequence": 1, "age_from": 8, "age_to": 17, "ganji": "병진", "stem_sipsin": "비견" }
+      ]
+    }
+  }
+}
+```
+
+일진(오늘) 데이터(오늘 운세 메뉴):
+
+```json
+{
+  "iljin": {
+    "date": "2026-06-25",
+    "ganji": "무진",
+    "stem_sipsin": "식신",
+    "branch_sipsin": "식신"
   }
 }
 ```
@@ -412,7 +478,7 @@ LLM 해석 생성
 
 | 팀원 | 담당 기능 | 담당 파일 예시 |
 |---|---|---|
-| 최연준 | 만세력 계산 tool, 전체 통합 | `src/tools/saju_chart.py` |
+| 최연준 | 만세력 계산 tool, 명리 해석 tool, 전체 통합 | `src/tools/saju_chart.py`, `src/tools/myeongri.py` |
 | 이윤서 | 오행 분석 tool | `src/tools/five_elements.py` |
 | 최호택 | 오늘 운세 점수 tool | `src/tools/today_luck.py` |
 | 전원정 | 행운 색깔/아이템 추천 tool | `src/tools/lucky_factors.py` |
@@ -436,7 +502,7 @@ LLM 해석 생성
 | LLM 연결 | LangChain |
 | Tool 구현 | LangChain `@tool` |
 | LLM 모델/API | OpenAI API 또는 Gemini API |
-| 만세력 계산 | MVP 계산기, npm 패키지 `@fullstackfamily/manseryeok`, 공공데이터 API 중 선택 |
+| 만세력 계산 | npm 패키지 `@fullstackfamily/manseryeok`(간지·절기 등 1차 재료) + 십신·신살·대운 등 해석은 자체 명리 룰셋(`src/tools/myeongri.py`, 순수 파이썬) |
 | 데이터베이스 | MVP는 없음 또는 session state, 확장 시 SQLite/JSON |
 | 주요 라이브러리 | `langchain`, `streamlit`, `python-dotenv`, `pytest`, LLM SDK, 필요 시 `@fullstackfamily/manseryeok` |
 | 배포 환경 | Streamlit Community Cloud, Hugging Face Spaces, Render 중 선택 |
@@ -446,7 +512,7 @@ LLM 해석 생성
 
 ### 기능 성공 지표
 
-- [ ] 4개 이상의 LangChain `@tool` 함수가 구현되어 있다.
+- [ ] 6개의 LangChain `@tool` 함수가 구현되어 있다 (4개 이상 요건 충족).
 - [ ] 팀원 4명이 각각 1개 이상의 tool을 담당했다.
 - [ ] 사용자 입력 후 사주 프로필이 생성된다.
 - [ ] 오늘의 행운 점수, 행운 색깔, 행운 아이템이 표시된다.
@@ -478,17 +544,18 @@ MVP에서 반드시 구현할 것:
 - 오행 분석 tool
 - 오늘 운세 점수 tool
 - 행운 색깔/아이템 추천 tool
-- LLM 해석
+- 명리 해석 tool (십신·신살·대운·일진)
+- LLM 해석 (메뉴별 출력 양식 + 상담가 페르소나)
 - Streamlit/Gradio UI
 - PRD, README, ARCHITECTURE 문서
 
 MVP에서 시간이 남으면 구현할 것:
 
-- 연애운/재물운 전용 카테고리 분석 tool
+- 연애운/재물운 전용 분석 (명리 십신 기반으로 구현 완료)
 - 대화 기록 저장
 - SQLite 저장
 - 배포 URL
-- 더 정교한 만세력 라이브러리 연동
+- 더 정교한 만세력 라이브러리 연동 (`@fullstackfamily/manseryeok` 연동 완료, 명리 해석 레이어 추가)
 - `@fullstackfamily/manseryeok` 사용 시 GitHub ZIP 다운로드가 아니라 `npm install @fullstackfamily/manseryeok` 방식으로 설치
 - Python `@tool`에서 Node.js helper 스크립트 `scripts/calculate_saju.mjs`를 호출하는 구조 적용
 
@@ -519,8 +586,8 @@ MVP에서 시간이 남으면 구현할 것:
 
 ## 19. 오픈 질문
 
-- 최종 UI 프레임워크를 Streamlit으로 확정할 것인가, Gradio로 갈 것인가?
-- 만세력 계산은 MVP 계산기로 시작할 것인가, 외부 라이브러리/API를 바로 연결할 것인가?
-- LLM API는 OpenAI와 Gemini 중 무엇을 사용할 것인가?
-- 대화 기록 저장을 MVP에 포함할 것인가?
-- 배포를 필수로 할 것인가, 로컬 실행 시연으로 충분한가?
+- 최종 UI 프레임워크 → 결정됨: Streamlit.
+- 만세력 계산 방식 → 결정됨: `@fullstackfamily/manseryeok` 연동 + 자체 명리 해석 레이어(`src/tools/myeongri.py`).
+- LLM API → 결정됨: OpenAI 기본 사용(Gemini도 지원, 키 없으면 tool 결과 기반 fallback).
+- 대화 기록 저장을 MVP에 포함할 것인가? (현재 미정 — 세션 상태만 사용)
+- 배포를 필수로 할 것인가, 로컬 실행 시연으로 충분한가? (현재 미정)
