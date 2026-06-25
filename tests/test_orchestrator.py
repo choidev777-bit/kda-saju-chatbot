@@ -110,9 +110,12 @@ def test_saju_reading_does_not_run_today_luck():
     profile = orch.build_profile(USER_JSON)
     result = orch.answer("saju_reading", profile)
     assert result["ok"] is True
+    # 사주풀이는 오늘 운세(일진) 점수는 쓰지 않는다.
     assert config.TOOL_TODAY_LUCK not in result["data"]["tools_run"]
-    assert config.TOOL_LUCKY_FACTORS not in result["data"]["tools_run"]
     assert "five_elements" in result["data"]["tool_results"]
+    # 명리 해석(십신/신살/대운 등)과 행운 색깔은 사주풀이 양식에 포함된다.
+    assert "myeongri" in result["data"]["tool_results"]
+    assert config.TOOL_LUCKY_FACTORS in result["data"]["tools_run"]
 
 
 def test_today_fortune_runs_today_luck():

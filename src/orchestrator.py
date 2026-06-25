@@ -27,6 +27,7 @@ from .chat_intent import (
     route_intent,
     slots_to_user_info,
 )
+from .tools.myeongri import analyze_myeongri_impl, calculate_iljin_impl
 from .tools.saju_chart import calculate_saju_chart_impl
 
 # 팀원 도구의 (모듈 경로, 함수 이름) 명세
@@ -143,11 +144,20 @@ class Orchestrator:
         else:
             pending.append(config.TOOL_FIVE_ELEMENTS)
 
+        # 명리 해석(정적): 통합 리드의 코어 도구라 레지스트리 없이 직접 계산한다.
+        # 외부 의존이 없으므로 pending 으로 두지 않는다(실패해도 None 으로 graceful).
+        myeongri_input = config.to_json(
+            config.success({"user": user, "saju_chart": saju_data})
+        )
+        myeongri_res = _safe_call(analyze_myeongri_impl, myeongri_input)
+        myeongri_data = myeongri_res["data"] if myeongri_res.get("ok") else None
+
         return config.success(
             {
                 "user": user,
                 "saju_chart": saju_data,
                 "five_elements": five_elements_data,
+                "myeongri": myeongri_data,
                 "pending_tools": pending,
             }
         )
@@ -194,6 +204,24 @@ class Orchestrator:
                 tool_results["five_elements"] = five_elements_data
             else:
                 pending.append(config.TOOL_FIVE_ELEMENTS)
+
+        # 명리 해석도 프로필 생성 단계에서 계산되었다(정적). tools_run 에는 넣지 않는다.
+        if config.TOOL_MYEONGRI in required:
+            myeongri_data = profile_data.get("myeongri")
+            if myeongri_data is not None:
+                tool_results["myeongri"] = myeongri_data
+            else:
+                pending.append(config.TOOL_MYEONGRI)
+
+        # 일진(오늘): 출생 일주 기준으로 직접 계산한다(core). 날짜 의존이라 메뉴 단계에서 계산.
+        if config.TOOL_ILJIN in required:
+            res = _safe_call(
+                calculate_iljin_impl, config.to_json(config.success(profile_data))
+            )
+            if res.get("ok"):
+                tool_results["iljin"] = res["data"]
+            else:
+                pending.append(config.TOOL_ILJIN)
 
         # 오늘 운세 점수 (입력: 조립된 profile)
         if config.TOOL_TODAY_LUCK in required:

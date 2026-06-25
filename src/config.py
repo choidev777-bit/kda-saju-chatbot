@@ -80,18 +80,22 @@ TOOL_SAJU_CHART = "calculate_saju_chart"
 TOOL_FIVE_ELEMENTS = "analyze_five_elements"
 TOOL_TODAY_LUCK = "calculate_today_luck"
 TOOL_LUCKY_FACTORS = "recommend_lucky_factors"
+# 명리 해석(십신/지장간/신강신약/용신/신살/대운) 및 일진. 통합 리드의 코어 도구로,
+# 외부 의존 없이 결정적으로 계산하므로 orchestrator 는 레지스트리 없이 직접 호출한다.
+TOOL_MYEONGRI = "analyze_myeongri"
+TOOL_ILJIN = "calculate_iljin"
 
 # 각 메뉴가 필요로 하는 tool 목록.
 # orchestrator 는 이 표를 보고 "필요한 tool 만" 실행한다. (PLAN 10. 메뉴별 실행 흐름)
 MENU_REQUIRED_TOOLS = {
-    "saju_reading": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS],
-    "today_fortune": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_TODAY_LUCK],
+    "saju_reading": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI, TOOL_LUCKY_FACTORS],
+    "today_fortune": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI, TOOL_TODAY_LUCK, TOOL_ILJIN],
     "luck_score": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_TODAY_LUCK],
-    "lucky_color": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_LUCKY_FACTORS],
-    "lucky_item": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_LUCKY_FACTORS],
-    "love": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS],
-    "wealth": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS],
-    "life_flow": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS],
+    "lucky_color": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI, TOOL_LUCKY_FACTORS],
+    "lucky_item": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI, TOOL_LUCKY_FACTORS],
+    "love": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI],
+    "wealth": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI],
+    "life_flow": [TOOL_SAJU_CHART, TOOL_FIVE_ELEMENTS, TOOL_MYEONGRI],
 }
 
 MENU_LABELS_KO = {
