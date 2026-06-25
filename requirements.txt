@@ -2,6 +2,9 @@
 # 설치: pip install -r requirements.txt
 
 # LangChain @tool 데코레이터 (계산은 tool 이 담당)
+# 팀원들이 `from langchain.tools import tool` 과 `langchain_core.tools` 를 모두 쓰므로
+# 두 import 경로가 다 동작하도록 메타 패키지 langchain 을 함께 설치한다.
+langchain>=0.2.0
 langchain-core>=0.2.0
 
 # UI
