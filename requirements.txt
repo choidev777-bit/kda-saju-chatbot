@@ -1,0 +1,19 @@
+# 사주 챗봇 Python 의존성
+# 설치: pip install -r requirements.txt
+
+# LangChain @tool 데코레이터 (계산은 tool 이 담당)
+langchain-core>=0.2.0
+
+# UI
+streamlit>=1.30.0
+
+# 환경 변수 로딩
+python-dotenv>=1.0.0
+
+# 테스트
+pytest>=8.0.0
+
+# LLM 제공자 (선택) — 키가 있을 때만 실제 호출에 사용된다.
+# 키가 없으면 앱은 tool 결과 기반 기본 답변으로 동작한다.
+langchain-openai>=0.1.0
+# langchain-google-genai>=1.0.0   # Gemini 사용 시 주석 해제
