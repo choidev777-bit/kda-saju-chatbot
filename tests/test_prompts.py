@@ -54,6 +54,28 @@ def test_build_user_prompt_includes_follow_up_and_history():
     assert "계산 근거로 사용하지 말고" in prompt
 
 
+def test_build_user_prompt_follow_up_does_not_force_menu_format():
+    prompt = prompts.build_user_prompt(
+        sample_package("saju_reading"),
+        follow_up="왜 그렇게 나온건지 상세히 설명",
+        history=[{"role": "assistant", "content": "사주 풀이"}],
+    )
+
+    assert "이전 '사주풀이' 답변에 대해 후속 질문" in prompt
+    assert "고정 메뉴 출력 양식은 사용하지 않는다" in prompt
+    assert "아래 메뉴 출력 양식을 그대로 따르라" not in prompt
+    assert '먼저 "사주 풀이"로 시작하고' not in prompt
+    assert "- **행운의 색깔**" not in prompt
+
+
+def test_build_user_prompt_new_menu_still_uses_menu_format():
+    prompt = prompts.build_user_prompt(sample_package("saju_reading"))
+
+    assert "아래 메뉴 출력 양식을 그대로 따르라" in prompt
+    assert '먼저 "사주 풀이"로 시작하고' in prompt
+    assert "행운의 색깔" in prompt
+
+
 def test_build_user_prompt_requires_tool_json_only_and_safety_rules():
     prompt = prompts.build_user_prompt(sample_package())
 
@@ -117,6 +139,22 @@ def test_fallback_today_fortune_uses_consistent_markdown_format():
         assert heading in text
     assert "해석 유형: 오늘의 운세 해석" in text
     assert "82점" in text
+    assert config.DISCLAIMER_KO in text
+
+
+def test_fallback_follow_up_uses_free_form_without_menu_sections():
+    text = prompts.fallback_answer(
+        sample_package("saju_reading"),
+        follow_up="금 기운이 부족하다는 게 무슨 뜻이야?",
+        history=[{"role": "assistant", "content": "금 기운이 비어 있습니다."}],
+    )
+
+    assert "이전 사주풀이 답변에 이어서" in text
+    assert "금 기운이 부족하다는 말" in text
+    assert "## 메뉴별 해석" not in text
+    assert "## 오늘의 작은 제안" not in text
+    assert "- **행운의 색깔**" not in text
+    assert '먼저 "사주 풀이"로 시작하고' not in text
     assert config.DISCLAIMER_KO in text
 
 

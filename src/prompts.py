@@ -85,8 +85,17 @@ PERSONA_KO = (
 
 # 메뉴 공통 출력 규칙(세부 양식은 메뉴별 MENU_FORMATS_KO 가 결정한다).
 ANSWER_FORMAT_KO = (
-    "답변은 한국어 Markdown으로 작성하고, 사용자가 선택한 메뉴의 지정 출력 양식을 반드시 따른다. "
-    "각 분석에는 tool 결과를 근거로 한 해석과, 바로 실천 가능한 개운법을 함께 담는다."
+    "최초 리딩이나 명확한 새 메뉴 요청에는 사용자가 선택한 메뉴의 지정 출력 양식을 따른다. "
+    "이전 답변에 대한 후속 질문에는 사주 상담가 페르소나와 안전 정책만 유지하고, "
+    "고정 메뉴 양식 없이 사용자의 질문에 직접 답한다."
+)
+
+FOLLOW_UP_FORMAT_KO = (
+    "이 요청은 이전 답변에 대한 후속 질문이다. 사주 상담가 페르소나와 담담한 어조는 유지하되, "
+    "고정 메뉴 출력 양식은 사용하지 않는다. 사주표, 전체 섹션 구성, 행운의 색깔, 행운의 숫자, "
+    "행운의 방향, 멘탈 관리 습관, 메뉴별 개운법 목록을 다시 반복하지 않는다. "
+    "사용자가 물은 개념이나 근거만 이전 tool JSON과 최근 대화 맥락에 비추어 자유 형식으로 설명한다. "
+    "필요한 경우 짧은 문단이나 간단한 목록만 사용한다."
 )
 
 SYSTEM_PROMPT_KO = (
@@ -103,7 +112,8 @@ SYSTEM_PROMPT_KO = (
     "6. '팩폭'은 성향·심리에 대한 날카로운 통찰일 뿐이며, 금지 주제나 미래를 단정하는 표현이 "
     "아니다. 금지 주제에는 '반드시·무조건·위험하다' 같은 단정 표현을 쓰지 않는다.\n"
     "7. 답변은 한국어 Markdown, 엔터테인먼트와 자기성찰용 조언으로 작성한다.\n"
-    "8. 사용자가 선택한 메뉴의 지정 출력 양식(아래)을 반드시 따른다.\n"
+    "8. 최초 리딩이나 명확한 새 메뉴 요청에는 지정 출력 양식을 따른다. "
+    "이전 답변에 대한 후속 질문에는 고정 양식을 반복하지 말고 질문에 직접 답한다.\n"
     f"{SAFETY_POLICY_KO}\n"
     f"{ANSWER_FORMAT_KO}"
 )
@@ -279,30 +289,50 @@ def build_user_prompt(
     """LLM user 메시지 문자열을 만든다."""
     label = package.get("menu_label", package.get("intent"))
     history = history if history is not None else package.get("conversation_history")
-    lines = [
-        f"사용자가 '{label}' 을(를) 요청했다.",
-        "아래는 tool 이 계산한 결과 JSON 이다. tool JSON만 근거로 해석하라.",
-        "JSON에 없는 정보는 추측하거나 지어내지 마라.",
-        f"{SAFETY_TOPIC_TEXT_KO}은 단정하지 마라.",
-        SAFETY_POLICY_KO,
-        ANSWER_FORMAT_KO,
-        "",
-        "아래 메뉴 출력 양식을 그대로 따르라. 소제목의 시적 비유와 개운법까지 포함한다:",
-        menu_format(package.get("intent")),
-        "",
-        "```json",
-        json.dumps(package, ensure_ascii=False, indent=2),
-        "```",
-    ]
+    if follow_up:
+        lines = [
+            f"사용자가 이전 '{label}' 답변에 대해 후속 질문을 했다.",
+            "아래는 이전 답변의 근거가 된 tool 계산 결과 JSON 이다. tool JSON만 근거로 해석하라.",
+            "JSON에 없는 정보는 추측하거나 지어내지 마라.",
+            f"{SAFETY_TOPIC_TEXT_KO}은 단정하지 마라.",
+            SAFETY_POLICY_KO,
+            FOLLOW_UP_FORMAT_KO,
+            "",
+            "```json",
+            json.dumps(package, ensure_ascii=False, indent=2),
+            "```",
+        ]
+    else:
+        lines = [
+            f"사용자가 '{label}' 을(를) 요청했다.",
+            "아래는 tool 이 계산한 결과 JSON 이다. tool JSON만 근거로 해석하라.",
+            "JSON에 없는 정보는 추측하거나 지어내지 마라.",
+            f"{SAFETY_TOPIC_TEXT_KO}은 단정하지 마라.",
+            SAFETY_POLICY_KO,
+            ANSWER_FORMAT_KO,
+            "",
+            "아래 메뉴 출력 양식을 그대로 따르라. 소제목의 시적 비유와 개운법까지 포함한다:",
+            menu_format(package.get("intent")),
+            "",
+            "```json",
+            json.dumps(package, ensure_ascii=False, indent=2),
+            "```",
+        ]
     history_context = _history_lines(history)
     if history_context:
         lines.extend(["", "최근 대화", *history_context])
     if follow_up:
         lines.append(f"\n사용자의 추가 질문: {follow_up}")
-    lines.append(
-        "\n위 데이터를 바탕으로 따뜻하고 담백한 조언형 해석을 한국어로 작성하라. "
-        "없는 정보는 지어내지 마라."
-    )
+    if follow_up:
+        lines.append(
+            "\n위 데이터를 바탕으로 한국어로 답하되, 이전 답변의 전체 양식을 다시 생성하지 말고 "
+            "추가 질문에 필요한 만큼만 자연스럽게 설명하라."
+        )
+    else:
+        lines.append(
+            "\n위 데이터를 바탕으로 따뜻하고 담백한 조언형 해석을 한국어로 작성하라. "
+            "없는 정보는 지어내지 마라."
+        )
     return "\n".join(lines)
 
 
@@ -610,12 +640,119 @@ def _recent_context_lines(history: list[dict] | None) -> list[str]:
     return lines
 
 
+def _element_name(value: str | None) -> str | None:
+    if not value:
+        return None
+    return config.ELEMENT_KO.get(value, value)
+
+
+def _follow_up_context_lines(package: dict) -> list[str]:
+    profile = package.get("profile", {})
+    results = package.get("tool_result", {})
+    lines = []
+    basis = _basis_lines(profile)
+    if basis:
+        lines.extend(basis[:3])
+    myeongri = _myeongri_lines(results)
+    if myeongri:
+        lines.extend(myeongri[:3])
+    if package.get("intent") in ("today_fortune", "luck_score"):
+        today = _today_lines(results)
+        if today:
+            lines.extend(today[:3])
+    return lines or ["- 현재 답변은 이전 tool JSON에서 확인되는 범위 안에서만 이어서 설명할 수 있습니다."]
+
+
+def _follow_up_interpretation(package: dict, follow_up: str) -> list[str]:
+    profile = package.get("profile", {})
+    fe = profile.get("five_elements") or {}
+    strong = _element_name(fe.get("strong_element"))
+    weak = _element_name(fe.get("weak_element"))
+    recommended = _element_name(fe.get("recommended_element"))
+    summary = _safe_tool_text(fe.get("summary"))
+
+    lines = []
+    if summary:
+        lines.append(f"이전 답변에서 그렇게 본 1차 근거는 오행 분석의 `{summary}`입니다.")
+    elif strong or weak:
+        parts = []
+        if strong:
+            parts.append(f"{strong} 기운이 두드러진 점")
+        if weak:
+            parts.append(f"{weak} 기운이 보완 대상으로 잡힌 점")
+        lines.append("이전 답변의 근거는 " + ", ".join(parts) + "입니다.")
+
+    if weak == "금" or recommended == "금":
+        lines.append(
+            "명리 해석에서 금은 정리, 구분, 판단, 선 긋기처럼 형태를 또렷하게 만드는 힘으로 풀이합니다. "
+            "그래서 금 기운이 부족하다는 말은 능력이 없다는 뜻이 아니라, 생각과 감정을 분리해 말하거나 "
+            "필요 없는 부담을 잘라내는 훈련이 과제가 되기 쉽다는 의미에 가깝습니다."
+        )
+    elif recommended:
+        lines.append(
+            f"보완 기운이 {recommended}(으)로 잡혔다는 것은 부족한 부분을 더 세게 밀어붙이라는 뜻보다, "
+            "일상에서 그 기운이 상징하는 태도를 작게 보태면 균형이 좋아진다는 의미입니다."
+        )
+
+    if "왜" in follow_up or "근거" in follow_up or "나온" in follow_up:
+        lines.append(
+            "즉 답변은 대화 이력에서 새로 계산한 것이 아니라, 이전 tool 결과의 오행·십신·신살 근거를 "
+            "성향 언어로 풀어낸 것입니다."
+        )
+
+    return lines or [
+        "질문하신 부분은 이전 답변 전체를 다시 풀이하기보다, 이미 계산된 근거를 바탕으로 한 해석의 의미를 "
+        "조금 더 풀어 보는 쪽이 맞습니다."
+    ]
+
+
+def _fallback_follow_up_answer(
+    package: dict,
+    follow_up: str,
+    history: list[dict] | None = None,
+) -> str:
+    profile = package.get("profile", {})
+    name = profile.get("name") or "당신"
+    label = package.get("menu_label", package.get("intent"))
+
+    if _has_unsafe_claim(follow_up):
+        return "\n".join(
+            [
+                f"{name} 님, 이 추가 질문은 안전 정책상 단정할 수 없는 주제라 예측으로 답하지 않겠습니다.",
+                "",
+                "사주 해석은 중요한 결정을 대신 내려주는 용도가 아니라, 지금의 태도와 선택 습관을 돌아보는 참고 자료로만 보는 것이 좋습니다.",
+                "",
+                config.DISCLAIMER_KO,
+            ]
+        )
+
+    lines = [
+        f"{name} 님, 이전 {label} 답변에 이어서 설명드리면 이 질문은 전체 풀이를 다시 볼 일이 아니라, 방금 나온 근거를 풀어보는 질문입니다.",
+        "",
+        f"질문: {follow_up}",
+        "",
+    ]
+    lines.extend(_follow_up_interpretation(package, follow_up))
+    lines.extend(["", "확인되는 근거는 이 정도입니다."])
+    lines.extend(_follow_up_context_lines(package))
+
+    recent_context = _recent_context_lines(history)
+    if recent_context:
+        lines.extend(["", "최근 대화는 맥락으로만 참고했습니다.", *recent_context])
+
+    lines.extend(["", config.DISCLAIMER_KO])
+    return "\n".join(lines)
+
+
 def fallback_answer(
     package: dict,
     follow_up: str | None = None,
     history: list[dict] | None = None,
 ) -> str:
     """LLM 없이 tool 결과만으로 만든 결정적 답변. (API 키 없을 때/실패 시)"""
+    if follow_up:
+        return _fallback_follow_up_answer(package, follow_up, history=history)
+
     profile = package.get("profile", {})
     name = profile.get("name") or "당신"
     results = package.get("tool_result", {})

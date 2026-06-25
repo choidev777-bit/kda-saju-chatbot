@@ -39,7 +39,7 @@ Supporting product requirements:
 
 ## Current Goal
 
-Make post-answer chat messages continue from prior conversation context by default, while preserving explicit menu routing, deterministic tool grounding, safety redirects, and regression tests.
+Make post-answer chat messages continue from prior conversation context by default and answer follow-up questions without repeating the fixed menu templates, while preserving explicit menu routing, deterministic tool grounding, safety redirects, and regression tests.
 
 ## Non-Goals
 
@@ -55,6 +55,8 @@ Make post-answer chat messages continue from prior conversation context by defau
 
 - Contextual Korean follow-up questions after a saju answer route as `follow_up`.
 - Follow-ups reuse `last_intent` and `last_tool_results` without rerunning tools.
+- Follow-up prompts preserve the saju counselor persona but do not include the fixed menu output template.
+- Follow-up fallback answers respond in free form and do not repeat the saju table, lucky-color blocks, menu sections, or generic full-reading structure.
 - Explicit new menu requests still switch intent.
 - Safety-blocked topics still win before follow-up fallback.
 - No-context ambiguous messages still ask for clarification or profile data.
@@ -90,6 +92,11 @@ Additional checks:
 - Reproduction: `Orchestrator.handle_message()` returns `reply_kind='clarify'` and no `llm_package` for the same state.
 - Implemented contextual follow-up fallback in `src/chat_intent.py`.
 - Added routing and conversation-flow regression tests for Korean contextual follow-ups.
-- `pytest tests/test_chat_intent.py tests/test_chat_flow.py tests/test_orchestrator.py -q`: 34 passed.
-- `pytest -q`: 113 passed.
-- `streamlit run app.py --server.headless true --server.fileWatcherType none --server.port 8503`: HTTP 200 smoke passed.
+- Follow-up generation gap found: `src/prompts.py` still injected the menu output format into follow-up prompts, which could make the model repeat the full fixed answer structure.
+- Updated `src/prompts.py` so follow-up prompts use persona-only free-form instructions while initial/new menu requests still receive the fixed menu format.
+- Updated fallback follow-up answers to avoid menu-section output and answer the user's follow-up directly from prior tool JSON.
+- Added prompt/fallback regression tests covering the fixed-template suppression on follow-up turns.
+- `pytest tests/test_prompts.py tests/test_chat_intent.py tests/test_chat_flow.py tests/test_orchestrator.py -q`: 53 passed.
+- `pytest --collect-only -q`: 137 tests collected.
+- `pytest -q`: 137 passed.
+- `streamlit run app.py --server.headless true --server.fileWatcherType none --server.port 8503`: HTTP 200 smoke passed at `http://127.0.0.1:8503` (PID 27776).
